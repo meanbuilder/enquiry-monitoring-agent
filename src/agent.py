@@ -255,11 +255,11 @@ def explain_with_openai(
         explanation = (response.output_text or "").strip()
         return explanation or "The AI service returned no explanation."
 
-    except Exception:
+       except Exception as exc:
         return (
-            "AI explanation is temporarily unavailable. Check the "
-            "Streamlit logs and API configuration. Python findings "
-            "remain available."
+            f"AI explanation failed: {type(exc).__name__}: {exc}\n\n"
+            "Python findings remain available. Check your API key, "
+            "model access, account billing, and Streamlit logs."
         )
 
 
