@@ -29,62 +29,50 @@ st.set_page_config(
 
 st.markdown(
     """
-    <style>
-    .block-container {
-        padding-top: 1.6rem;
-        padding-bottom: 2.5rem;
-        max-width: 1500px;
-    }
+    
+<style>
+:root {
+    --primary: #176B70;
+    --primary-dark: #123F46;
+    --primary-light: #D9EFEC;
+    --app-background: #F4F8F8;
+    --card-background: #FFFFFF;
+    --text-color: #19383B;
+    --border-color: #D7E5E4;
+}
 
-    [data-testid="stMetric"] {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        padding: 16px 18px;
-        border-radius: 14px;
-    }
+.stApp {
+    background-color: var(--app-background);
+    color: var(--text-color);
+}
 
-    [data-testid="stMetricLabel"] {
-        color: #64748b;
-    }
+[data-testid="stSidebar"] {
+    background-color: var(--primary-dark);
+}
 
-    [data-testid="stMetricValue"] {
-        color: #0f172a;
-    }
+[data-testid="stSidebar"] * {
+    color: #F4FAFA;
+}
 
-    .hero {
-        padding: 1.25rem 1.5rem;
-        border-radius: 18px;
-        background: linear-gradient(120deg, #10243e, #1d4ed8);
-        color: white;
-        margin-bottom: 1.1rem;
-    }
+.stButton > button[kind="primary"] {
+    background-color: var(--primary);
+    color: #FFFFFF;
+    border: 1px solid var(--primary);
+    border-radius: 8px;
+}
 
-    .hero h1 {
-        color: white;
-        margin: 0;
-        font-size: 2rem;
-    }
+.stButton > button[kind="primary"]:hover {
+    background-color: var(--primary-dark);
+    border-color: var(--primary-dark);
+}
 
-    .hero p {
-        color: #dbeafe;
-        margin: .45rem 0 0;
-    }
-
-    .eyebrow {
-        text-transform: uppercase;
-        letter-spacing: .12em;
-        font-size: .72rem;
-        color: #bfdbfe;
-        font-weight: 700;
-    }
-
-    .section-title {
-        font-size: 1.15rem;
-        font-weight: 700;
-        color: #0f172a;
-        margin: .4rem 0 .75rem;
-    }
-    </style>
+[data-testid="stMetric"] {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    padding: 16px;
+    border-radius: 12px;
+}
+</style>
     """,
     unsafe_allow_html=True,
 )
