@@ -6,7 +6,7 @@ import streamlit as st
 
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
-from src.agent import answer_demo_question, explain_with_openai
+
 from src.data_loader import load_sample_data
 from src.followup_engine import build_followup_view, summarize_metrics
 
