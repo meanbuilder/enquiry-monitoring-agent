@@ -1,253 +1,271 @@
-import sys
-from pathlib import Path
+
+"""Question-answering and optional AI explanation for the enquiry dashboard."""
+
+from __future__ import annotations
+
+import json
+import os
+from typing import Any
 
 import pandas as pd
-import streamlit as st
 
-ROOT = Path(__file__).parent
-sys.path.insert(0, str(ROOT))
 
-from src.data_loader import load_sample_data
-from src.followup_engine import build_followup_view, summarize_metrics
+def _normalise(value: Any) -> str:
+    """Convert a value to searchable, lowercase text."""
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip().lower()
 
-st.set_page_config(
-    page_title="Enquiry Intelligence | Executive Demo",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-st.markdown(
-    """
-<style>
-.block-container {padding-top:1.6rem; padding-bottom:2.5rem; max-width:1500px;}
-[data-testid="stMetric"] {background:#fff; border:1px solid #e5e7eb; padding:16px 18px; border-radius:14px;}
-[data-testid="stMetricLabel"] {color:#64748b;} [data-testid="stMetricValue"] {color:#0f172a;}
-.hero {padding:1.25rem 1.5rem; border-radius:18px; background:linear-gradient(120deg,#10243e,#1d4ed8); color:white; margin-bottom:1.1rem;}
-.hero h1 {color:white; margin:0; font-size:2rem;} .hero p {color:#dbeafe; margin:.45rem 0 0;}
-.eyebrow {text-transform:uppercase; letter-spacing:.12em; font-size:.72rem; color:#bfdbfe; font-weight:700;}
-.section-title {font-size:1.15rem; font-weight:700; color:#0f172a; margin:.4rem 0 .75rem;}
-</style>
-""",
-    unsafe_allow_html=True,
-)
 
-enquiries, quotations = load_sample_data()
-followups = build_followup_view(enquiries, quotations)
-metrics = summarize_metrics(enquiries, quotations, followups)
+def _safe_metrics(metrics: Any) -> dict:
+    """Keep only simple, serialisable metric values."""
+    if not isinstance(metrics, dict):
+        return {}
 
-with st.sidebar:
-    st.markdown("## 📊 Enquiry Intelligence")
-    st.caption("Executive monitoring prototype")
-    page = st.radio(
-        "Navigate",
-        ["Executive Overview", "Enquiry Workbench", "Agent Action Centre"],
-        label_visibility="collapsed",
-    )
-    st.divider()
-    st.markdown("**Demo environment**")
-    st.success("Synthetic data only")
-    st.caption("No company files, external APIs, or real customer data are used.")
-    st.divider()
-    st.caption("Prototype • Rule-based insights • Human approval required")
+    safe = {}
 
-st.markdown(
-    """
-<div class="hero"><div class="eyebrow">Marketing operations · CEO preview</div>
-<h1>Enquiry Monitoring &amp; Follow-up</h1>
-<p>One view of enquiry flow, quotation outcomes, blockers and recommended next actions.</p></div>
-""",
-    unsafe_allow_html=True,
-)
-st.info(
-    "DEMO MODE — All records and company names are fictional examples created for this prototype.",
-    icon="🔒",
-)
-
-if page == "Executive Overview":
-    st.markdown(
-        '<div class="section-title">Executive snapshot</div>', unsafe_allow_html=True
-    )
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total enquiries", f"{metrics['total_enquiries']:,}")
-    c2.metric("Quotations issued", f"{metrics['quotations_issued']:,}")
-    c3.metric("Orders received", f"{metrics['orders_received']:,}")
-    c4.metric("WO preparation check", f"{metrics['wo_check']:,}")
-    c5.metric("Needs review", f"{metrics['needs_review']:,}")
-    left, right = st.columns([1.2, 1])
-    with left:
-        st.markdown(
-            '<div class="section-title">Enquiry pipeline</div>', unsafe_allow_html=True
-        )
-        pipeline = pd.DataFrame(
-            {
-                "Stage": ["Enquiry received", "Quotation issued", "Order received"],
-                "Records": [
-                    metrics["total_enquiries"],
-                    metrics["quotations_issued"],
-                    metrics["orders_received"],
-                ],
+    for key, value in metrics.items():
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            safe[str(key)] = value
+        elif isinstance(value, dict):
+            safe[str(key)] = {
+                str(k): v
+                for k, v in value.items()
+                if isinstance(v, (str, int, float, bool))
+                or v is None
             }
-        ).set_index("Stage")
-        st.bar_chart(pipeline, horizontal=True, height=250)
-    with right:
-        st.markdown(
-            '<div class="section-title">Follow-up priority mix</div>',
-            unsafe_allow_html=True,
-        )
-        priority_order = ["Urgent", "High", "Normal", "Needs review"]
-        st.bar_chart(
-            followups["Priority"].value_counts().reindex(priority_order, fill_value=0),
-            height=250,
-        )
-    st.markdown(
-        '<div class="section-title">Recommended attention list</div>',
-        unsafe_allow_html=True,
-    )
-    attention = followups[
-        followups["Priority"].isin(["Urgent", "High", "Needs review"])
+
+    return safe
+
+
+def _find_matching_rows(
+    question: str,
+    enquiries: pd.DataFrame,
+    quotations: pd.DataFrame,
+) -> list[str]:
+    """Find basic text matches without guessing business status."""
+    terms = [
+        term.strip(".,?!:;()[]{}\"'")
+        for term in question.lower().split()
     ]
-    if attention.empty:
-        st.success("No high-priority records in this synthetic dataset.")
-    else:
-        st.dataframe(
-            attention[
-                [
-                    "Client Name",
-                    "Enquiry Reference",
-                    "Item",
-                    "Priority",
-                    "Blocker / Finding",
-                    "Recommended Next Action",
-                ]
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
-    st.caption(
-        "Counts are calculated from the bundled synthetic dataset. They are not business performance claims."
-    )
+    terms = [term for term in terms if len(term) >= 3]
 
-elif page == "Enquiry Workbench":
-    st.markdown(
-        '<div class="section-title">Search and inspect enquiries</div>',
-        unsafe_allow_html=True,
-    )
-    f1, f2, f3 = st.columns([1.4, 1, 1])
-    search = f1.text_input(
-        "Search client, item or reference", placeholder="e.g. Northstar"
-    )
-    priorities = ["All"] + sorted(followups["Priority"].dropna().unique().tolist())
-    selected_priority = f2.selectbox("Priority", priorities)
-    statuses = ["All"] + sorted(followups["Finding Status"].dropna().unique().tolist())
-    selected_status = f3.selectbox("Finding status", statuses)
-    view = followups.copy()
-    if search.strip():
-        mask = (
-            view.astype(str)
-            .apply(lambda col: col.str.contains(search.strip(), case=False, na=False))
-            .any(axis=1)
-        )
-        view = view[mask]
-    if selected_priority != "All":
-        view = view[view["Priority"] == selected_priority]
-    if selected_status != "All":
-        view = view[view["Finding Status"] == selected_status]
-    st.caption(f"{len(view)} record(s) match the current filters.")
-    st.dataframe(view, use_container_width=True, hide_index=True, height=430)
-    with st.expander("Quotation register (synthetic)"):
-        st.dataframe(quotations, use_container_width=True, hide_index=True)
-    with st.expander("Enquiry register (synthetic)"):
-        st.dataframe(enquiries, use_container_width=True, hide_index=True)
+    if not terms:
+        return []
 
-else:
-    st.markdown(
-        '<div class="section-title">Ask the demo assistant</div>',
-        unsafe_allow_html=True,
-    )
-    st.write(
-        "Try questions about priority records, orders received, work-order preparation, or unresolved blockers."
-    )
-    examples = [
-        "Which records need attention?",
-        "Which customers have placed orders but still need a work order?",
-        "What are the main blockers?",
-        "Summarize the current pipeline",
-    ]
-    chosen = st.selectbox("Example questions", ["Choose a sample question…"] + examples)
-    question = st.text_input(
-        "Your question",
-        value="" if chosen == "Choose a sample question…" else chosen,
-        placeholder="Ask a question about the synthetic registers",
-    )
+    findings = []
 
-    if st.button(
-        "Analyze records",
-        type="primary",
-        disabled=not question.strip(),
+    for label, frame in (
+        ("Enquiry Register", enquiries),
+        ("Quotation Register", quotations),
     ):
-        base_result = answer_demo_question(
-            question,
-            enquiries,
-            quotations,
-            followups,
-            metrics,
+        if not isinstance(frame, pd.DataFrame) or frame.empty:
+            continue
+
+        searchable = frame.fillna("").astype(str)
+        row_text = searchable.apply(
+            lambda row: " ".join(row.values).lower(), axis=1
         )
 
-        ai_answer = None
-
-        try:
-            ai_answer = explain_with_openai(
-                question,
-                base_result,
-                metrics,
-            )
-        except Exception as exc:
-            st.warning(
-                "The GPT explanation is unavailable. "
-                "Showing the rule-based findings instead."
-            )
-            st.caption(f"Error type: {type(exc).__name__}")
-
-        st.markdown("### Findings")
-        st.write(ai_answer or base_result["answer"])
-
-        if not base_result["records"].empty:
-            st.dataframe(
-                base_result["records"],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        st.markdown("### Suggested next step")
-        st.write(base_result["next_step"])
-
-        if ai_answer:
-            st.caption(
-                "GPT explains the Python findings. "
-                "Python remains authoritative for business calculations."
-            )
-        else:
-            st.caption("Rule-based analysis shown; GPT was not available.")
-        result = answer_demo_question(
-            question, enquiries, quotations, followups, metrics
+        # Require a term to match a row; cap displayed results.
+        mask = row_text.apply(
+            lambda value: any(term in value for term in terms)
         )
-        st.markdown("### Findings")
-        st.write(result["answer"])
-        if not result["records"].empty:
-            st.dataframe(result["records"], use_container_width=True, hide_index=True)
-        st.markdown("### Suggested next step")
-        st.write(result["next_step"])
-        st.caption(
-            "This first version uses transparent Python rules, not a connected LLM. No data is sent to an AI provider."
-        )
-    st.divider()
-    st.markdown("### How this prototype makes decisions")
-    st.markdown("""
-- A recorded customer order is not automatically treated as a completed work order.
-- A blank remark or work-order number is treated as unknown, not proof of a lost enquiry.
-- Ambiguous or conflicting information is marked for human review.
-- Recommendations are advisory; the prototype does not send emails or modify source registers.
-""")
+        matches = frame.loc[mask]
 
-st.divider()
-st.caption("Enquiry Intelligence • CEO demo build • Synthetic data only")
+        if matches.empty:
+            continue
+
+        findings.append(
+            f"{label}: {len(matches)} matching row(s) found."
+        )
+
+        # Display a few useful fields, not the entire register.
+        preferred = [
+            "Client Name",
+            "Item",
+            "Items",
+            "Enq. No. & Date",
+            "Quotation No.",
+            "WO No.",
+            "Remark",
+        ]
+        available = [
+            col for col in preferred if col in matches.columns
+        ]
+
+        for _, row in matches.head(5).iterrows():
+            details = [
+                f"{col}: {str(row[col])}"
+                for col in available
+                if str(row[col]).strip()
+                and str(row[col]).lower() != "nan"
+            ]
+            if details:
+                findings.append(" - " + "; ".join(details))
+
+    return findings
+
+
+def answer_demo_question(
+    question: str,
+    enquiries: pd.DataFrame,
+    quotations: pd.DataFrame,
+    followups: pd.DataFrame,
+    metrics: dict,
+) -> dict:
+    """
+    Produce transparent Python findings for the dashboard.
+
+    Blank fields are treated as unknown, not proof of a lost order
+    or a missed follow-up.
+    """
+    question = (question or "").strip()
+
+    if not question:
+        return {
+            "answer": "Enter a question to analyse the available data.",
+            "findings": [],
+        }
+
+    findings = []
+
+    if isinstance(enquiries, pd.DataFrame):
+        findings.append(
+            f"Enquiry Register contains {len(enquiries)} row(s)."
+        )
+    else:
+        enquiries = pd.DataFrame()
+        findings.append("Enquiry Register is unavailable.")
+
+    if isinstance(quotations, pd.DataFrame):
+        findings.append(
+            f"Quotation Register contains {len(quotations)} row(s)."
+        )
+    else:
+        quotations = pd.DataFrame()
+        findings.append("Quotation Register is unavailable.")
+
+    if isinstance(followups, pd.DataFrame):
+        findings.append(
+            f"Follow-up view contains {len(followups)} row(s)."
+        )
+    else:
+        followups = pd.DataFrame()
+
+    safe_metrics = _safe_metrics(metrics)
+    if safe_metrics:
+        findings.append(
+            "Available summary metrics: "
+            + json.dumps(safe_metrics, ensure_ascii=False)
+        )
+
+    matching = _find_matching_rows(
+        question, enquiries, quotations
+    )
+    findings.extend(matching)
+
+    if matching:
+        answer = (
+            "I found rows matching some of the words in your question. "
+            "Review the matching records below; keyword matches alone "
+            "do not establish order status, loss of business, or "
+            "whether a follow-up is overdue."
+        )
+    else:
+        answer = (
+            "The available data has been summarised, but I could not "
+            "identify a reliable record-level answer from a basic "
+            "keyword search. Check the register fields and summary "
+            "metrics before drawing a business conclusion."
+        )
+
+    return {
+        "answer": answer,
+        "findings": findings,
+        "metrics": safe_metrics,
+    }
+
+
+def _get_setting(name: str, default: str = "") -> str:
+    """Read a setting from Streamlit Secrets or environment variables."""
+    try:
+        import streamlit as st
+
+        value = st.secrets.get(name, "")
+        if value:
+            return str(value)
+    except Exception:
+        # Secrets may not exist outside a configured Streamlit app.
+        pass
+
+    return os.getenv(name, default)
+
+
+def explain_with_openai(
+    question: str,
+    base_result: Any,
+    metrics: Any,
+) -> str:
+    """Explain existing Python findings using the configured OpenAI API."""
+    api_key = _get_setting("OPENAI_API_KEY")
+
+    if not api_key:
+        return (
+            "AI explanation is disabled because OPENAI_API_KEY is not "
+            "configured. The Python findings remain available above."
+        )
+
+    if isinstance(base_result, dict):
+        python_findings = {
+            "answer": base_result.get("answer", ""),
+            "findings": base_result.get("findings", []),
+            "metrics": _safe_metrics(base_result.get("metrics", {})),
+        }
+    else:
+        python_findings = {"answer": str(base_result)}
+
+    payload = {
+        "question": question,
+        "python_findings": python_findings,
+        "summary_metrics": _safe_metrics(metrics),
+    }
+
+    try:
+        from openai import OpenAI
+
+        model = _get_setting("OPENAI_MODEL", "gpt-4.1-mini")
+        client = OpenAI(api_key=api_key, timeout=20.0, max_retries=1)
+
+        response = client.responses.create(
+            model=model,
+            instructions=(
+                "You explain enquiry and quotation analysis for a "
+                "business dashboard. Use only the supplied findings. "
+                "Do not invent counts, dates, clients, or status. "
+                "Distinguish missing information from negative outcomes. "
+                "A blank work order number does not prove that an order "
+                "was lost or that work-order preparation is overdue. "
+                "If evidence is insufficient, say so. Be concise."
+            ),
+            input=json.dumps(payload, ensure_ascii=False, default=str),
+        )
+
+        explanation = (response.output_text or "").strip()
+
+        if not explanation:
+            return "The AI service returned an empty explanation."
+
+        return explanation
+
+    except ImportError:
+        return (
+            "AI explanation unavailable: install the 'openai' package "
+            "using requirements.txt. Python findings are still available."
+        )
+    except Exception:
+        return (
+            "AI explanation is temporarily unavailable. Check the "
+            "Streamlit app logs and API configuration. Python findings "
+            "are still available above."
+        )
