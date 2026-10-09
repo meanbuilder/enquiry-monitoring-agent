@@ -116,6 +116,66 @@ h1, h2, h3 {
 }
 
 
+/* Main application */
+.stApp {
+    background-color: #F4F8F8;
+    color: #19383B;
+}
+
+/* Table container */
+[data-testid="stDataFrame"],
+[data-testid="stTable"] {
+    border: 1px solid #D7E5E4;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Text inputs and text areas */
+.stTextInput input,
+.stTextArea textarea {
+    background-color: #FFFFFF;
+    color: #19383B;
+    border: 1px solid #B9D5D3;
+    border-radius: 8px;
+}
+
+/* Focused input */
+.stTextInput input:focus,
+.stTextArea textarea:focus {
+    border-color: #176B70;
+    box-shadow: 0 0 0 1px #176B70;
+}
+
+/* Select boxes and dropdowns */
+[data-baseweb="select"] > div {
+    background-color: #FFFFFF;
+    border-color: #B9D5D3;
+    border-radius: 8px;
+}
+
+/* Primary buttons */
+.stButton > button[kind="primary"] {
+    background-color: #176B70;
+    color: #FFFFFF;
+    border: 1px solid #176B70;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.stButton > button[kind="primary"]:hover {
+    background-color: #123F46;
+    border-color: #123F46;
+}
+
+/* Secondary buttons */
+.stButton > button[kind="secondary"] {
+    background-color: #FFFFFF;
+    color: #176B70;
+    border: 1px solid #B9D5D3;
+    border-radius: 8px;
+}
+
+
 </style>
     """,
     unsafe_allow_html=True,
