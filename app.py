@@ -7,7 +7,7 @@ ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 from src.data_loader import load_sample_data
 from src.followup_engine import build_followup_view, summarize_metrics
-from src.agent import answer_demo_question
+from src.agent import answer_demo_question, explain_with_openai
 
 st.set_page_config(page_title="Enquiry Intelligence | Executive Demo", page_icon="📊", layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
