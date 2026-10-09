@@ -1,0 +1,7 @@
+Sr No.,REG. No.,Client Name,Enq. No. & Date,Enq. Rec. Date,Due Date,Item,ENQ Review,Quotation No. and Date,Qtn Date,Quotation Value,Quotaion Priority,Quotation Evaluation status,Remarks
+1,REG-DEMO-001,Northstar Process Systems,ENQ-DEMO-1001,2026-09-18,2026-10-10,Inbed Coils,Drawing revision awaited,,,,,High,Under review,Demo record only
+2,REG-DEMO-002,BluePeak Chemicals,ENQ-DEMO-1002,2026-09-20,2026-10-12,Bends,Technical clarification required,,,,,Normal,Clarification,Demo record only
+3,REG-DEMO-003,Meridian Energy Works,ENQ-DEMO-1003,2026-09-22,2026-10-14,Water Wall Assembly,Material specification confirmation,,,,,High,Pending clarification,Demo record only
+4,REG-DEMO-004,Evergreen Industrial Boilers,ENQ-DEMO-1004,2026-09-25,2026-10-16,Boiler Drum,,,,,,Normal,New,Demo record only
+5,REG-DEMO-005,Redwood Engineering Group,ENQ-DEMO-1005,2026-09-27,2026-10-18,Superheater Tubes,Rate approval awaited,,,,,High,Internal approval,Demo record only
+6,REG-DEMO-006,Silverline Manufacturing,ENQ-DEMO-1006,2026-09-29,2026-10-20,Header Assembly,,,,,,Normal,New,Demo record only
