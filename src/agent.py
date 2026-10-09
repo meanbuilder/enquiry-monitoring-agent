@@ -1,4 +1,3 @@
-
 """Rule-based enquiry analysis with optional OpenAI explanations."""
 
 from __future__ import annotations
@@ -235,31 +234,26 @@ def answer_demo_question(
     }
 
 
-def explain_with_openai(
-    question: str,
-    base_result: Any,
-    metrics: Any,
-) -> str:
-    """Explain Python findings using the OpenAI API."""
 
-    api_key = _get_setting("OPENAI_API_KEY")
+def explain_with_openai(question, base_result, metrics):
+    """Explain Python findings using the Gemini API."""
+
+    api_key = _get_setting("GEMINI_API_KEY")
 
     if not api_key:
         return (
-            "AI explanation unavailable: OPENAI_API_KEY is not "
-            "configured in Streamlit Secrets. Python findings "
-            "remain available."
+            "Gemini explanation unavailable: "
+            "GEMINI_API_KEY is not configured. "
+            "Python findings remain available."
         )
 
     if not isinstance(base_result, dict):
         return "AI explanation unavailable: invalid findings format."
 
     try:
-        from openai import OpenAI
+        from google import genai
 
         result_records = base_result.get("records")
-
-        # Share only a limited selection of relevant fields and rows.
         safe_records = []
 
         if (
@@ -300,49 +294,33 @@ def explain_with_openai(
             "summary_metrics": _safe_metrics(metrics),
         }
 
-        client = OpenAI(
-            api_key=api_key,
-            timeout=30.0,
-            max_retries=1,
-        )
+        client = genai.Client(api_key=api_key)
 
-        response = client.responses.create(
+        response = client.models.generate_content(
             model=_get_setting(
-                "OPENAI_MODEL",
-                "gpt-4.1-mini",
+                "GEMINI_MODEL",
+                "gemini-3.8-flash",
             ),
-            instructions=(
+            contents=(
                 "You are an enquiry monitoring business assistant. "
-                "Explain the supplied Python findings in concise, "
-                "professional language suitable for management. "
-                "Use the supplied records and metrics only. Do not "
+                "Explain the supplied Python findings concisely for "
+                "management. Use only the supplied evidence. Do not "
                 "invent counts, dates, clients, or business outcomes. "
-                "Do not claim a quotation is lost unless the evidence "
-                "explicitly establishes that. A blank work-order "
-                "number means its status needs checking; it does not "
-                "prove the order was lost or the work order is overdue. "
-                "Distinguish facts from recommendations. If evidence "
-                "is insufficient, say so. Suggest practical next steps "
-                "but do not claim to have contacted anyone or changed "
-                "any records."
+                "A blank work-order number does not prove an order "
+                "was lost or overdue. Distinguish facts from "
+                "recommendations and state when evidence is insufficient.\n\n"
+                + json.dumps(payload, ensure_ascii=False, default=str)
             ),
-            input=json.dumps(payload, ensure_ascii=False, default=str),
         )
 
-        explanation = (response.output_text or "").strip()
-
-        if not explanation:
-            return "AI explanation unavailable: the API returned an empty response."
-
-        return explanation
+        explanation = (response.text or "").strip()
+        return explanation or "Gemini returned an empty explanation."
 
     except Exception as exc:
-        # Diagnostic message excludes the API key.
         return (
-            f"AI explanation failed: {type(exc).__name__}: {exc}\n\n"
-            "Python findings remain available. Check the model "
-            "setting, API access, account usage limits, and "
-            "Streamlit Cloud logs."
+            f"Gemini explanation failed: {type(exc).__name__}: {exc}\n\n"
+            "Python findings remain available. Check your API key, "
+            "model access, usage limits, and Streamlit logs."
         )
 
 
