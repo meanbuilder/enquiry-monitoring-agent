@@ -24,3 +24,49 @@ def answer_demo_question(question, enquiries, quotations, followups, metrics):
         answer = "I could not map that question to a supported demo query. Try asking about attention items, work-order checks, blockers, or the pipeline."
         next_step = "Use one of the example questions or narrow the request to a known register field."
     return {"answer": answer, "records": records, "next_step": next_step}
+
+import streamlit as st
+from openai import OpenAI
+
+
+def explain_with_openai(question, base_result, metrics):
+    api_key = st.secrets.get("OPENAI_API_KEY")
+
+    if not api_key:
+        raise RuntimeError(
+            "OpenAI API key is missing. Configure it in Streamlit Secrets."
+        )
+
+    model = st.secrets.get("OPENAI_MODEL", "gpt-4.1-mini")
+    client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
+
+    # Send only the rule-based findings needed to answer the question.
+    context = {
+        "metrics": metrics,
+        "findings": base_result["answer"],
+        "next_step": base_result["next_step"],
+        "records": base_result["records"]
+            .head(12)
+            .fillna("")
+            .to_dict(orient="records"),
+    }
+
+    response = client.responses.create(
+        model=model,
+        instructions=(
+            "You are an enquiry monitoring assistant for a boiler "
+            "manufacturing business. Answer using only the supplied "
+            "context. Do not invent clients, statuses, dates, values, "
+            "or counts. Distinguish known facts from unknown information. "
+            "Treat the Python findings and metrics as authoritative. "
+            "Give a concise explanation and practical next step. "
+            "All supplied records are synthetic demo data."
+        ),
+        input=(
+            f"User question: {question}\n\n"
+            f"Verified Python context: {context}"
+        ),
+        max_output_tokens=350,
+    )
+
+    return response.output_text
