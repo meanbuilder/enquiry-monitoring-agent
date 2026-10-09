@@ -72,6 +72,50 @@ st.markdown(
     padding: 16px;
     border-radius: 12px;
 }
+
+
+/* KPI metric cards */
+[data-testid="stMetric"] {
+    background: #FFFFFF;
+    border: 1px solid #D7E5E4;
+    border-left: 4px solid #176B70;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(18, 63, 70, 0.05);
+}
+
+[data-testid="stMetricLabel"] {
+    color: #526D70;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+[data-testid="stMetricValue"] {
+    color: #123F46;
+    font-size: 1.8rem;
+    font-weight: 700;
+}
+
+/* Data tables */
+[data-testid="stDataFrame"] {
+    border: 1px solid #D7E5E4;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* General headings */
+h1, h2, h3 {
+    color: #123F46;
+}
+
+/* Inputs */
+.stTextInput input,
+.stSelectbox [data-baseweb="select"] {
+    border-color: #B9D5D3;
+    border-radius: 8px;
+}
+
+
 </style>
     """,
     unsafe_allow_html=True,
