@@ -299,7 +299,7 @@ def explain_with_openai(question, base_result, metrics):
         response = client.models.generate_content(
             model=_get_setting(
                 "GEMINI_MODEL",
-                "gemini-3.8-flash",
+                "gemini-3.5-flash-lite",
             ),
             contents=(
                 "You are an enquiry monitoring business assistant. "
