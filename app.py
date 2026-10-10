@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+
 from src.ui.dashboard import render_dashboard
 from src.ui.sidebar import render_sidebar
 from src.ui.styles import apply_styles
@@ -44,67 +45,6 @@ st.warning(
 
 if page == "CEO Overview":
     render_dashboard(metrics, followups)
-
-elif page == "Enquiry Workbench":
-    st.subheader("Executive snapshot")
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total enquiries", metrics["total_enquiries"])
-    c2.metric("Quotations issued", metrics["quotations_issued"])
-    c3.metric("Orders recorded", metrics["orders_received"])
-    c4.metric("Work-order checks", metrics["wo_check"])
-    c5.metric("Needs review", metrics["needs_review"])
-
-    left, right = st.columns(2)
-
-    with left:
-        st.markdown("#### Pipeline")
-        pipeline = pd.DataFrame(
-            {
-                "Stage": [
-                    "Enquiries",
-                    "Quotations",
-                    "Orders recorded",
-                ],
-                "Records": [
-                    metrics["total_enquiries"],
-                    metrics["quotations_issued"],
-                    metrics["orders_received"],
-                ],
-            }
-        ).set_index("Stage")
-        st.bar_chart(pipeline)
-
-    with right:
-        st.markdown("#### Priority mix")
-        counts = followups["Priority"].value_counts()
-        st.bar_chart(counts)
-
-    st.markdown("#### Recommended attention list")
-    attention = followups[
-        followups["Priority"].isin(["Urgent", "High", "Needs review"])
-    ]
-
-    if attention.empty:
-        st.success("No high-priority records in this dataset.")
-    else:
-        st.dataframe(
-            attention[
-                [
-                    "Client Name",
-                    "Enquiry Reference",
-                    "Item",
-                    "Priority",
-                    "Blocker / Finding",
-                    "Recommended Next Action",
-                ]
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
-
-elif page == "Enquiry Workbench":
-    st.subheader("Search and inspect records")
 
     search = st.text_input(
         "Search client, item or reference",
