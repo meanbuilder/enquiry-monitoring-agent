@@ -156,6 +156,10 @@ def summarize_metrics(
         "followups_required": int(
             (followups["Follow-up Status"] == "Follow-up required").sum()
         ),
+        "needs_review": int(
+    (followups["Follow-up Status"] == "Follow-up required").sum()
+    + (followups["Follow-up Status"] == "Order confirmed — WO missing").sum()
+),
         "awaiting_status_update": int(
             (followups["Follow-up Status"] == "Awaiting status update").sum()
         ),
