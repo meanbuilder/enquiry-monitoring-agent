@@ -133,6 +133,11 @@ def _explain_with_gemini(client, question, result, metrics) -> str:
 
     if isinstance(records, pd.DataFrame) and not records.empty:
         allowed_columns = [
+            "Quotation No.",
+            "Quotation Date",
+            "Qtn Date",
+            "Quotation Value",
+            "Total Value",
             "Client Name",
             "Enquiry Reference",
             "Item",
@@ -143,7 +148,6 @@ def _explain_with_gemini(client, question, result, metrics) -> str:
             "WO No.",
             "Source",
         ]
-
         columns = [column for column in allowed_columns if column in records.columns]
 
         record_data = records[columns].head(12).fillna("").to_dict(orient="records")
