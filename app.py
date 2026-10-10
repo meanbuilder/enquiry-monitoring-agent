@@ -3,6 +3,9 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from src.ui.dashboard import render_dashboard
+from src.ui.sidebar import render_sidebar
+from src.ui.styles import apply_styles
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -19,24 +22,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
-    """
-<style>
-.stApp { background: #F4F8F8; color: #19383B; }
-[data-testid="stSidebar"] { background: #123F46; }
-[data-testid="stSidebar"] * { color: #F4FAFA; }
-[data-testid="stMetric"] {
-    background: white;
-    border: 1px solid #D7E5E4;
-    border-left: 4px solid #176B70;
-    border-radius: 12px;
-    padding: 16px;
-}
-h1, h2, h3 { color: #123F46; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
+apply_styles()
 
 try:
     enquiries, quotations = load_sample_data()
@@ -46,23 +32,7 @@ except Exception as exc:
     st.error(f"Could not load the demo registers: {type(exc).__name__}: {exc}")
     st.stop()
 
-with st.sidebar:
-    st.markdown("## ⚓ EnquiryPulse")
-    st.caption("AI-powered CEO Command Centre")
-
-    page = st.radio(
-        "Navigate",
-        [
-            "CEO Overview",
-            "Enquiry Workbench",
-            "AI Agent",
-            "Decision Inbox",
-        ],
-    )
-
-    st.divider()
-    st.success("Synthetic demo data only")
-    st.caption("Gemini AI · Python analysis · Human approval")
+page = render_sidebar()
 
 st.title("EnquiryPulse")
 st.caption("Turn enquiry and quotation records into evidence-backed priorities.")
@@ -73,6 +43,9 @@ st.warning(
 )
 
 if page == "CEO Overview":
+    render_dashboard(metrics, followups)
+
+elif page == "Enquiry Workbench":
     st.subheader("Executive snapshot")
 
     c1, c2, c3, c4, c5 = st.columns(5)
