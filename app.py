@@ -1,313 +1,97 @@
-
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-# --------------------------------------------------
-# 1. Application setup
-# --------------------------------------------------
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-ROOT = Path(__file__).parent
-sys.path.insert(0, str(ROOT))
-
+from src.agent import answer_question
 from src.data_loader import load_sample_data
+from src.decision_service import build_decision_brief
 from src.followup_engine import build_followup_view, summarize_metrics
-from src.agent import answer_demo_question, explain_with_openai
 
 st.set_page_config(
-    page_title="Enquiry Intelligence | Executive Demo",
-    page_icon="📊",
+    page_title="EnquiryPulse | CEO Command Centre",
+    page_icon="⚓",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
-
-# --------------------------------------------------
-# 2. Styling
-# --------------------------------------------------
 
 st.markdown(
     """
-    
 <style>
-:root {
-    --primary: #176B70;
-    --primary-dark: #123F46;
-    --primary-light: #D9EFEC;
-    --app-background: #F4F8F8;
-    --card-background: #FFFFFF;
-    --text-color: #19383B;
-    --border-color: #D7E5E4;
-}
-
-.stApp {
-    background-color: var(--app-background);
-    color: var(--text-color);
-}
-
-[data-testid="stSidebar"] {
-    background-color: var(--primary-dark);
-}
-
-[data-testid="stSidebar"] * {
-    color: #F4FAFA;
-}
-
-.stButton > button[kind="primary"] {
-    background-color: var(--primary);
-    color: #FFFFFF;
-    border: 1px solid var(--primary);
-    border-radius: 8px;
-}
-
-.stButton > button[kind="primary"]:hover {
-    background-color: var(--primary-dark);
-    border-color: var(--primary-dark);
-}
-
+.stApp { background: #F4F8F8; color: #19383B; }
+[data-testid="stSidebar"] { background: #123F46; }
+[data-testid="stSidebar"] * { color: #F4FAFA; }
 [data-testid="stMetric"] {
-    background-color: var(--card-background);
-    border: 1px solid var(--border-color);
-    padding: 16px;
-    border-radius: 12px;
-}
-
-
-/* KPI metric cards */
-[data-testid="stMetric"] {
-    background: #FFFFFF;
+    background: white;
     border: 1px solid #D7E5E4;
     border-left: 4px solid #176B70;
     border-radius: 12px;
-    padding: 16px 18px;
-    box-shadow: 0 2px 8px rgba(18, 63, 70, 0.05);
+    padding: 16px;
 }
-
-[data-testid="stMetricLabel"] {
-    color: #526D70;
-    font-size: 0.85rem;
-    font-weight: 500;
-}
-
-[data-testid="stMetricValue"] {
-    color: #123F46;
-    font-size: 1.8rem;
-    font-weight: 700;
-}
-
-/* Data tables */
-[data-testid="stDataFrame"] {
-    border: 1px solid #D7E5E4;
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-/* General headings */
-h1, h2, h3 {
-    color: #123F46;
-}
-
-/* Inputs */
-.stTextInput input,
-.stSelectbox [data-baseweb="select"] {
-    border-color: #B9D5D3;
-    border-radius: 8px;
-}
-
-
-/* Main application */
-.stApp {
-    background-color: #F4F8F8;
-    color: #19383B;
-}
-
-/* Table container */
-[data-testid="stDataFrame"],
-[data-testid="stTable"] {
-    border: 1px solid #D7E5E4;
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-/* Text inputs and text areas */
-.stTextInput input,
-.stTextArea textarea {
-    background-color: #FFFFFF;
-    color: #19383B;
-    border: 1px solid #B9D5D3;
-    border-radius: 8px;
-}
-
-/* Focused input */
-.stTextInput input:focus,
-.stTextArea textarea:focus {
-    border-color: #176B70;
-    box-shadow: 0 0 0 1px #176B70;
-}
-
-/* Select boxes and dropdowns */
-[data-baseweb="select"] > div {
-    background-color: #FFFFFF;
-    border-color: #B9D5D3;
-    border-radius: 8px;
-}
-
-/* Primary buttons */
-.stButton > button[kind="primary"] {
-    background-color: #176B70;
-    color: #FFFFFF;
-    border: 1px solid #176B70;
-    border-radius: 8px;
-    font-weight: 600;
-}
-
-.stButton > button[kind="primary"]:hover {
-    background-color: #123F46;
-    border-color: #123F46;
-}
-
-/* Secondary buttons */
-.stButton > button[kind="secondary"] {
-    background-color: #FFFFFF;
-    color: #176B70;
-    border: 1px solid #B9D5D3;
-    border-radius: 8px;
-}
-
-
+h1, h2, h3 { color: #123F46; }
 </style>
-    """,
+""",
     unsafe_allow_html=True,
 )
 
-# --------------------------------------------------
-# 3. Load data and calculate Python findings
-# --------------------------------------------------
-
-enquiries, quotations = load_sample_data()
-
-followups = build_followup_view(enquiries, quotations)
-
-metrics = summarize_metrics(
-    enquiries,
-    quotations,
-    followups,
-)
-
-# --------------------------------------------------
-# 4. Sidebar navigation
-# --------------------------------------------------
+try:
+    enquiries, quotations = load_sample_data()
+    followups = build_followup_view(enquiries, quotations)
+    metrics = summarize_metrics(enquiries, quotations, followups)
+except Exception as exc:
+    st.error(f"Could not load the demo registers: {type(exc).__name__}: {exc}")
+    st.stop()
 
 with st.sidebar:
-    st.markdown("## 📊 Enquiry Intelligence")
-    st.caption("Executive monitoring prototype")
+    st.markdown("## ⚓ EnquiryPulse")
+    st.caption("AI-powered CEO Command Centre")
 
     page = st.radio(
         "Navigate",
         [
-            "Executive Overview",
+            "CEO Overview",
             "Enquiry Workbench",
-            "Agent Action Centre",
+            "AI Agent",
+            "Decision Inbox",
         ],
-        label_visibility="collapsed",
     )
 
     st.divider()
+    st.success("Synthetic demo data only")
+    st.caption("Gemini AI · Python analysis · Human approval")
 
-    st.markdown("**Demo environment**")
-    st.success("Synthetic data only")
+st.title("EnquiryPulse")
+st.caption("Turn enquiry and quotation records into evidence-backed priorities.")
 
-    st.caption(
-        "OpenAI API is used for AI explanations. "
-        "Only summary findings are sent by the agent module."
-    )
-
-    st.divider()
-
-    st.caption(
-        "Prototype • Python analysis • AI explanations • "
-        "Human approval required"
-    )
-
-# --------------------------------------------------
-# 5. Page header
-# --------------------------------------------------
-
-st.markdown(
-    """
-    <div class="hero">
-        <div class="eyebrow">
-            Marketing operations · CEO preview
-        </div>
-        <h1>Enquiry Monitoring &amp; Follow-up</h1>
-        <p>
-            One view of enquiry flow, quotation outcomes,
-            blockers and recommended next actions.
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.warning(
+    "DEMO MODE: Use fictional data only. Do not upload confidential "
+    "customer or commercial records to a public demo."
 )
 
-st.info(
-    "DEMO MODE — All records and company names are fictional "
-    "examples created for this prototype.",
-    icon="🔒",
-)
-
-# --------------------------------------------------
-# 6. Executive Overview
-# --------------------------------------------------
-
-if page == "Executive Overview":
-
-    st.markdown(
-        '<div class="section-title">Executive snapshot</div>',
-        unsafe_allow_html=True,
-    )
+if page == "CEO Overview":
+    st.subheader("Executive snapshot")
 
     c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total enquiries", metrics["total_enquiries"])
+    c2.metric("Quotations issued", metrics["quotations_issued"])
+    c3.metric("Orders recorded", metrics["orders_received"])
+    c4.metric("Work-order checks", metrics["wo_check"])
+    c5.metric("Needs review", metrics["needs_review"])
 
-    c1.metric(
-        "Total enquiries",
-        f"{metrics['total_enquiries']:,}",
-    )
-
-    c2.metric(
-        "Quotations issued",
-        f"{metrics['quotations_issued']:,}",
-    )
-
-    c3.metric(
-        "Orders received",
-        f"{metrics['orders_received']:,}",
-    )
-
-    c4.metric(
-        "WO preparation check",
-        f"{metrics['wo_check']:,}",
-    )
-
-    c5.metric(
-        "Needs review",
-        f"{metrics['needs_review']:,}",
-    )
-
-    left, right = st.columns([1.2, 1])
+    left, right = st.columns(2)
 
     with left:
-        st.markdown(
-            '<div class="section-title">Enquiry pipeline</div>',
-            unsafe_allow_html=True,
-        )
-
+        st.markdown("#### Pipeline")
         pipeline = pd.DataFrame(
             {
                 "Stage": [
-                    "Enquiry received",
-                    "Quotation issued",
-                    "Order received",
+                    "Enquiries",
+                    "Quotations",
+                    "Orders recorded",
                 ],
                 "Records": [
                     metrics["total_enquiries"],
@@ -316,52 +100,20 @@ if page == "Executive Overview":
                 ],
             }
         ).set_index("Stage")
-
-        st.bar_chart(
-            pipeline,
-            horizontal=True,
-            height=250,
-        )
+        st.bar_chart(pipeline)
 
     with right:
-        st.markdown(
-            '<div class="section-title">Follow-up priority mix</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown("#### Priority mix")
+        counts = followups["Priority"].value_counts()
+        st.bar_chart(counts)
 
-        priority_order = [
-            "Urgent",
-            "High",
-            "Normal",
-            "Needs review",
-        ]
-
-        priority_counts = (
-            followups["Priority"]
-            .value_counts()
-            .reindex(priority_order, fill_value=0)
-        )
-
-        st.bar_chart(
-            priority_counts,
-            height=250,
-        )
-
-    st.markdown(
-        '<div class="section-title">Recommended attention list</div>',
-        unsafe_allow_html=True,
-    )
-
+    st.markdown("#### Recommended attention list")
     attention = followups[
-        followups["Priority"].isin(
-            ["Urgent", "High", "Needs review"]
-        )
+        followups["Priority"].isin(["Urgent", "High", "Needs review"])
     ]
 
     if attention.empty:
-        st.success(
-            "No high-priority records in this synthetic dataset."
-        )
+        st.success("No high-priority records in this dataset.")
     else:
         st.dataframe(
             attention[
@@ -378,46 +130,24 @@ if page == "Executive Overview":
             hide_index=True,
         )
 
-    st.caption(
-        "Counts are calculated from the bundled synthetic dataset. "
-        "They are not business performance claims."
-    )
-
-# --------------------------------------------------
-# 7. Enquiry Workbench
-# --------------------------------------------------
-
 elif page == "Enquiry Workbench":
+    st.subheader("Search and inspect records")
 
-    st.markdown(
-        '<div class="section-title">Search and inspect enquiries</div>',
-        unsafe_allow_html=True,
-    )
-
-    f1, f2, f3 = st.columns([1.4, 1, 1])
-
-    search = f1.text_input(
+    search = st.text_input(
         "Search client, item or reference",
-        placeholder="e.g. Northstar",
+        placeholder="Enter a client or item",
     )
 
-    priorities = ["All"] + sorted(
-        followups["Priority"].dropna().unique().tolist()
+    priority_options = ["All"] + sorted(
+        followups["Priority"].dropna().astype(str).unique().tolist()
+    )
+    status_options = ["All"] + sorted(
+        followups["Finding Status"].dropna().astype(str).unique().tolist()
     )
 
-    selected_priority = f2.selectbox(
-        "Priority",
-        priorities,
-    )
-
-    statuses = ["All"] + sorted(
-        followups["Finding Status"].dropna().unique().tolist()
-    )
-
-    selected_status = f3.selectbox(
-        "Finding status",
-        statuses,
-    )
+    c1, c2 = st.columns(2)
+    priority = c1.selectbox("Priority", priority_options)
+    status = c2.selectbox("Finding status", status_options)
 
     view = followups.copy()
 
@@ -425,7 +155,7 @@ elif page == "Enquiry Workbench":
         mask = (
             view.astype(str)
             .apply(
-                lambda col: col.str.contains(
+                lambda column: column.str.contains(
                     search.strip(),
                     case=False,
                     na=False,
@@ -434,92 +164,60 @@ elif page == "Enquiry Workbench":
             )
             .any(axis=1)
         )
-
         view = view[mask]
 
-    if selected_priority != "All":
-        view = view[
-            view["Priority"] == selected_priority
-        ]
+    if priority != "All":
+        view = view[view["Priority"] == priority]
 
-    if selected_status != "All":
-        view = view[
-            view["Finding Status"] == selected_status
-        ]
+    if status != "All":
+        view = view[view["Finding Status"] == status]
 
-    st.caption(
-        f"{len(view)} record(s) match the current filters."
-    )
+    st.caption(f"{len(view)} matching record(s).")
+    st.dataframe(view, use_container_width=True, hide_index=True)
 
-    st.dataframe(
-        view,
-        use_container_width=True,
-        hide_index=True,
-        height=430,
-    )
+    with st.expander("Quotation register"):
+        st.dataframe(quotations, use_container_width=True, hide_index=True)
 
-    with st.expander("Quotation register (synthetic)"):
-        st.dataframe(
-            quotations,
-            use_container_width=True,
-            hide_index=True,
-        )
+    with st.expander("Enquiry register"):
+        st.dataframe(enquiries, use_container_width=True, hide_index=True)
 
-    with st.expander("Enquiry register (synthetic)"):
-        st.dataframe(
-            enquiries,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-# --------------------------------------------------
-# 8. Agent Action Centre
-# --------------------------------------------------
-
-else:
-
-    st.markdown(
-        '<div class="section-title">Ask the AI-assisted agent</div>',
-        unsafe_allow_html=True,
-    )
+elif page == "AI Agent":
+    st.subheader("Ask EnquiryPulse")
 
     st.write(
-        "Ask questions about priority records, customer orders, "
-        "work-order preparation, blockers or the enquiry pipeline."
+        "Ask about the pipeline, records needing attention, work-order checks, "
+        "documented blockers, or request a follow-up draft."
     )
 
     examples = [
-        "Which records need attention?",
-        "Which customers have placed orders but still need a work order?",
-        "What are the main blockers?",
         "Summarize the current pipeline",
+        "Which records need attention?",
+        "Which orders need a work-order check?",
+        "Find records for Northstar",
+        "Draft a follow-up email for Northstar",
+        "Prepare a decision brief",
     ]
 
-    chosen = st.selectbox(
+    example = st.selectbox(
         "Example questions",
-        ["Choose a sample question…"] + examples,
+        ["Choose an example"] + examples,
     )
+
+    default_question = "" if example == "Choose an example" else example
 
     question = st.text_input(
         "Your question",
-        value=(
-            ""
-            if chosen == "Choose a sample question…"
-            else chosen
-        ),
-        placeholder="Ask a question about the synthetic registers",
+        value=default_question,
+        key="agent_question",
     )
 
     if st.button(
-        "Analyze records",
+        "Analyze with Gemini",
         type="primary",
         disabled=not question.strip(),
     ):
-
-        # Step 1: Python calculates findings.
-        with st.spinner("Analysing records with Python..."):
-
-            result = answer_demo_question(
+        with st.spinner("Analyzing available records..."):
+            result = answer_question(
                 question,
                 enquiries,
                 quotations,
@@ -527,69 +225,107 @@ else:
                 metrics,
             )
 
-        st.markdown("### Python Findings")
+        st.session_state["last_agent_result"] = result
+        st.session_state["last_agent_question"] = question
 
-        st.write(result["answer"])
+    result = st.session_state.get("last_agent_result")
 
-        result_records = result.get("records")
+    if result:
+        st.markdown("#### Python findings")
+        st.write(result.get("answer", "No answer available."))
 
-        if (
-            isinstance(result_records, pd.DataFrame)
-            and not result_records.empty
-        ):
+        if result.get("tool"):
+            st.caption(f"Analysis tool: {result['tool']}")
+
+        records = result.get("records")
+
+        if isinstance(records, pd.DataFrame) and not records.empty:
+            st.markdown("#### Evidence records")
             st.dataframe(
-                result_records,
+                records,
                 use_container_width=True,
                 hide_index=True,
             )
-        else:
-            st.info("No matching records were returned.")
 
-        st.markdown("### Recommended Next Step")
+        st.markdown("#### Recommended next step")
+        st.write(result.get("next_step", "Verify the source records."))
 
-        st.write(result["next_step"])
+        if result.get("ai_summary"):
+            st.markdown("#### Gemini explanation")
+            st.write(result["ai_summary"])
 
-        # Step 2: OpenAI explains the Python findings.
-        st.divider()
+        if result.get("action_kind") == "draft":
+            st.text_area(
+                "Follow-up draft — review before sending",
+                value=result.get("draft", result.get("ai_summary", "")),
+                height=240,
+            )
 
-        st.markdown("### AI Explanation")
-
-        with st.spinner("Generating AI explanation..."):
-
-            ai_answer = explain_with_openai(
-                question,
+        if result.get("action_kind") == "decision":
+            brief = build_decision_brief(
+                st.session_state.get("last_agent_question", ""),
                 result,
                 metrics,
             )
 
-        st.markdown(ai_answer)
+            st.markdown("#### CEO decision brief")
+            st.write("**Question:**", brief["question"])
+            st.write("**Evidence:**", brief["evidence"])
+            st.write("**Recommendation:**", brief["recommendation"])
+            st.write("**Risk / uncertainty:**", brief["uncertainty"])
+            st.write("**Proposed next action:**", brief["next_action"])
+
+            if st.button("Add to Decision Inbox"):
+                st.session_state.setdefault("decision_items", [])
+                st.session_state["decision_items"].append(
+                    {
+                        **brief,
+                        "status": "Pending review",
+                    }
+                )
+                st.success("Added to this session's Decision Inbox.")
 
         st.caption(
-            "Python calculates the findings. OpenAI explains them. "
-            "Recommendations require human review."
+            "Gemini recommendations are advisory. Python calculates the metrics "
+            "and selects the records."
         )
 
-    st.divider()
+elif page == "Decision Inbox":
+    st.subheader("Decision Inbox")
 
-    st.markdown("### How this prototype makes decisions")
-
-    st.markdown(
-        """
-        - A recorded customer order is not automatically treated as a completed work order.
-        - A blank remark or work-order number is treated as unknown, not proof of a lost enquiry.
-        - Ambiguous or conflicting information is marked for human review.
-        - Python remains responsible for the calculations and rule-based findings.
-        - OpenAI explains the supplied findings; it does not independently verify the source registers.
-        - Recommendations are advisory. The prototype does not send emails or modify source registers.
-        """
+    st.info(
+        "This demo inbox is temporary. Its decisions are not stored in a "
+        "shared database, and approving a recommendation sends no email."
     )
 
-# --------------------------------------------------
-# 9. Footer
-# --------------------------------------------------
+    items = st.session_state.get("decision_items", [])
+
+    if not items:
+        st.write("No decision briefs yet. Create one from the AI Agent section.")
+
+    for index, item in enumerate(items):
+        with st.container(border=True):
+            st.markdown(f"**{index + 1}. {item.get('question', 'Decision brief')}**")
+            st.write(item.get("recommendation", ""))
+            st.write("**Evidence:**", item.get("evidence", ""))
+            st.write("**Uncertainty:**", item.get("uncertainty", ""))
+            st.caption(f"Status: {item.get('status', 'Pending review')}")
+
+            a, b, c = st.columns(3)
+
+            if a.button("Approve internal follow-up", key=f"approve_{index}"):
+                items[index]["status"] = "Approved for internal follow-up"
+                st.rerun()
+
+            if b.button("Reject", key=f"reject_{index}"):
+                items[index]["status"] = "Rejected"
+                st.rerun()
+
+            if c.button("Defer", key=f"defer_{index}"):
+                items[index]["status"] = "Deferred"
+                st.rerun()
 
 st.divider()
-
 st.caption(
-    "Enquiry Intelligence • CEO demo build • Synthetic data only"
+    "EnquiryPulse · Gemini-powered demo · Synthetic data · Human verification required"
 )

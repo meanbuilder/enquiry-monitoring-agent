@@ -1,40 +1,27 @@
-# Enquiry Intelligence — CEO Demo
+# EnquiryPulse — CEO Command Centre
 
-A browser-based Streamlit prototype for monitoring enquiry and quotation registers. It uses **synthetic demo records only** and does not connect to an AI provider, send email, or persist changes.
+EnquiryPulse is a Streamlit demo for monitoring enquiry and quotation
+registers. It combines deterministic Python business rules with
+Gemini-powered question routing and evidence-backed explanations.
+
+**Demo uses synthetic data only.** Do not commit customer records,
+commercially sensitive information, API keys, or `.env` files.
 
 ## Features
-- Executive snapshot of enquiry and quotation activity
-- Enquiry workbench with search and filters
-- Transparent rule-based follow-up findings
-- Demo assistant for supported questions
-- Work-order preparation check when `Remark` indicates an order was received but `WO No.` is blank
-- Unknown outcomes stay unknown when remark and work-order fields are blank
 
-## Deploy from GitHub
-1. Create a **private** GitHub repository named `enquiry-monitoring-agent`.
-2. Upload the files and folders from this project to the repository root.
-3. Open Streamlit Community Cloud and sign in with GitHub.
-4. Create a new app and select the repository, branch, and `app.py` as the main file.
-5. Deploy. Use the app's shareable URL for the CEO demo.
-6. In a separate browser or private/incognito window, verify that the app opens without a login prompt before sharing the link.
+- CEO overview of enquiries, quotations, recorded orders and work-order checks.
+- Searchable enquiry workbench with priority filters.
+- Gemini-powered natural-language question routing.
+- Allowlisted Python analysis tools.
+- Evidence-backed explanations and customer follow-up drafts.
+- Session-only CEO decision inbox.
+- Python-calculated metrics and record matching.
+- No automatic email sending or source-register modification.
 
-The deployed app is intended to be publicly accessible. **Anyone who obtains the URL may be able to open it.** Keep this build limited to synthetic data. A private GitHub repository protects repository access; it does not make the deployed app private.
+## Configure Gemini on Streamlit Community Cloud
 
-## Run locally (optional for developers)
-```bash
-python -m pip install -r requirements.txt
-streamlit run app.py
-```
+Open your app's Settings → Secrets and add:
 
-## Test business rules
-```bash
-python -m pip install pytest
-pytest -q
-```
-
-## Data and privacy
-- The CSV files in `sample_data/` contain fictional names, references, dates, and values.
-- Never commit real enquiry/quotation registers, customer information, API keys, `.env` files, or secrets.
-- This first build uses Python rules only. It does not send data to an external LLM.
-- The app is a demonstration, not a production system of record. It does not provide durable shared storage or authenticated access.
-- Follow-up recommendations are advisory and require human verification.
+```toml
+GEMINI_API_KEY = "your-Gemini-API-key"
+GEMINI_MODEL = "gemini-2.5-flash"
