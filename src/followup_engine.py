@@ -1,6 +1,8 @@
+
 import re
 
 import pandas as pd
+
 
 ORDER_PHRASES = (
     "order received",
@@ -24,18 +26,9 @@ def _normalise(value) -> str:
 
 
 def _is_order_received(remark: str) -> bool:
-    """
-    Recognise known order-confirmation wording, including
-    the demo spelling 'Order Reced'.
-
-    Deliberately avoids treating every occurrence of 'order'
-    as confirmation.
-    """
     text = _normalise(remark)
-
     if not text:
         return False
-
     return any(phrase in text for phrase in ORDER_PHRASES)
 
 
@@ -47,17 +40,16 @@ def build_followup_view(
     enquiries: pd.DataFrame,
     quotations: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Build one row per quotation and append relevant enquiry
-    information when a client/item match is available.
+    """Build quotation follow-ups and attach matching enquiry details."""
 
-    A missing enquiry match does not discard a quotation.
-    A missing work order does not mean an order was lost.
-    """
     result = quotations.copy()
 
-    result["Order Confirmed"] = result["Remark"].apply(_is_order_received)
-    result["Work Order Recorded"] = result["WO No."].apply(_has_work_order)
+    result["Order Confirmed"] = (
+        result["Remark"].apply(_is_order_received)
+    )
+    result["Work Order Recorded"] = (
+        result["WO No."].apply(_has_work_order)
+    )
 
     def classify(row):
         if row["Order Confirmed"] and not row["Work Order Recorded"]:
@@ -81,54 +73,15 @@ def build_followup_view(
     result["Follow-up Priority"] = result.apply(priority, axis=1)
     result["Priority"] = result["Follow-up Priority"]
 
-    result["Enquiry Reference"] = result.get(
-    "Enq. No. & Date", pd.Series("", index=result.index)
-).fillna("")
-
-result["Item"] = result.get(
-    "Items", pd.Series("", index=result.index)
-).fillna("")
-
-result["Blocker / Finding"] = result.apply(
-    lambda row: (
-        "Order confirmed but work order missing"
-        if row["Order Confirmed"] and not row["Work Order Recorded"]
-        else "Quotation status needs update"
-        if row["Follow-up Status"] == "Awaiting status update"
-        else "Follow-up required"
-        if row["Follow-up Status"] == "Follow-up required"
-        else ""
-    ),
-    axis=1,
-)
-
-result["Recommended Next Action"] = result.apply(
-    lambda row: (
-        "Confirm and record the work order number"
-        if row["Order Confirmed"] and not row["Work Order Recorded"]
-        else "Contact the customer for a status update"
-        if row["Follow-up Status"] in (
-            "Awaiting status update",
-            "Follow-up required",
-        )
-        else "Verify the recorded work order"
-        if row["Work Order Recorded"]
-        else ""
-    ),
-    axis=1,
-)
-
-
-
-
-    
-
-    # Match by client name and item where possible.
-    # Keep all quotation rows even if no enquiry matches.
+    # Match enquiries to quotations by client and item.
     enquiry_lookup = enquiries.copy()
 
-    enquiry_lookup["_client_key"] = enquiry_lookup["Client Name"].map(_normalise)
-    enquiry_lookup["_item_key"] = enquiry_lookup["Item"].map(_normalise)
+    enquiry_lookup["_client_key"] = (
+        enquiry_lookup["Client Name"].map(_normalise)
+    )
+    enquiry_lookup["_item_key"] = (
+        enquiry_lookup["Item"].map(_normalise)
+    )
 
     result["_client_key"] = result["Client Name"].map(_normalise)
     result["_item_key"] = result["Items"].map(_normalise)
@@ -167,6 +120,49 @@ result["Recommended Next Action"] = result.apply(
         errors="ignore",
     )
 
+    # Dashboard compatibility columns.
+    if "Enq. No. & Date" in result.columns:
+        result["Enquiry Reference"] = (
+            result["Enq. No. & Date"].fillna("")
+        )
+    else:
+        result["Enquiry Reference"] = ""
+
+    result["Item"] = result["Items"].fillna("")
+
+    def blocker(row):
+        if row["Order Confirmed"] and not row["Work Order Recorded"]:
+            return "Order confirmed but work order missing"
+
+        if row["Follow-up Status"] == "Awaiting status update":
+            return "Quotation status needs update"
+
+        if row["Follow-up Status"] == "Follow-up required":
+            return "Follow-up required"
+
+        return ""
+
+    result["Blocker / Finding"] = result.apply(blocker, axis=1)
+
+    def next_action(row):
+        if row["Order Confirmed"] and not row["Work Order Recorded"]:
+            return "Confirm and record the work order number"
+
+        if row["Follow-up Status"] in (
+            "Awaiting status update",
+            "Follow-up required",
+        ):
+            return "Contact the customer for a status update"
+
+        if row["Work Order Recorded"]:
+            return "Verify the recorded work order"
+
+        return ""
+
+    result["Recommended Next Action"] = result.apply(
+        next_action, axis=1
+    )
+
     return result
 
 
@@ -174,16 +170,27 @@ def summarize_metrics(
     enquiries: pd.DataFrame,
     quotations: pd.DataFrame,
 ) -> dict:
-    """Calculate dashboard metrics using Python, not the AI model."""
+    """Calculate dashboard metrics using Python."""
+
     followups = build_followup_view(enquiries, quotations)
 
     values = pd.to_numeric(
-        quotations["Total Value"].astype(str).str.replace(",", "", regex=False),
+        quotations["Total Value"]
+        .astype(str)
+        .str.replace(",", "", regex=False),
         errors="coerce",
     ).fillna(0)
 
     confirmed = followups["Order Confirmed"]
     with_wo = followups["Work Order Recorded"]
+
+    followup_required = (
+        followups["Follow-up Status"] == "Follow-up required"
+    )
+    awaiting_update = (
+        followups["Follow-up Status"] == "Awaiting status update"
+    )
+    confirmed_missing_wo = confirmed & ~with_wo
 
     return {
         "total_enquiries": int(len(enquiries)),
@@ -194,15 +201,12 @@ def summarize_metrics(
         "orders_received": int(confirmed.sum()),
         "work_orders_recorded": int((confirmed & with_wo).sum()),
         "wo_check": int((confirmed & with_wo).sum()),
-        "confirmed_orders_missing_wo": int((confirmed & ~with_wo).sum()),
-        "followups_required": int(
-            (followups["Follow-up Status"] == "Follow-up required").sum()
+        "confirmed_orders_missing_wo": int(
+            confirmed_missing_wo.sum()
         ),
+        "followups_required": int(followup_required.sum()),
         "needs_review": int(
-    (followups["Follow-up Status"] == "Follow-up required").sum()
-    + (followups["Follow-up Status"] == "Order confirmed — WO missing").sum()
-),
-        "awaiting_status_update": int(
-            (followups["Follow-up Status"] == "Awaiting status update").sum()
+            followup_required.sum() + confirmed_missing_wo.sum()
         ),
+        "awaiting_status_update": int(awaiting_update.sum()),
     }
