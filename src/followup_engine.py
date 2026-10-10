@@ -1,56 +1,158 @@
+import re
+
 import pandas as pd
 
-def _norm(value):
-    return str(value or "").strip().lower()
+ORDER_PHRASES = (
+    "order received",
+    "order rec",
+    "order recd",
+    "order receiv",
+    "po received",
+    "purchase order received",
+)
 
-def build_followup_view(enquiries: pd.DataFrame, quotations: pd.DataFrame) -> pd.DataFrame:
-    """Build a transparent, rule-based action view from synthetic register rows."""
-    rows = []
-    for _, q in quotations.iterrows():
-        remark = _norm(q.get("Remark", ""))
-        wo_no = str(q.get("WO No.", "")).strip()
-        order_received = "order rec" in remark or "order received" in remark
-        if order_received and not wo_no:
-            status, priority = "Order received — WO check", "High"
-            finding = "Customer order is recorded, but the work-order number is blank."
-            action = "Confirm work-order preparation status with the responsible team."
-        elif order_received and wo_no:
-            status, priority = "Order recorded", "Normal"
-            finding = "Customer order and work-order reference are both recorded."
-            action = "Verify handoff and delivery milestones in the source system."
-        elif not remark and not wo_no:
-            status, priority = "Unknown — review", "Needs review"
-            finding = "Remark and work-order number are blank; outcome cannot be inferred."
-            action = "Check the latest customer communication and update the register."
-        else:
-            status, priority = "Quotation follow-up", "Normal"
-            finding = "No confirmed order outcome is recorded in the available fields."
-            action = "Review the latest follow-up and decide whether another contact is due."
-        rows.append({"Client Name": q.get("Client Name", ""), "Enquiry Reference": q.get("Quotation No.", ""), "Item": q.get("Items", ""), "Quotation Date": q.get("Quotation Date", ""), "Quotation Value": q.get("Total Value", ""), "Finding Status": status, "Priority": priority, "Blocker / Finding": finding, "Recommended Next Action": action, "WO No.": wo_no, "Source": "Quotation Register"})
 
-    quote_clients = {_norm(x) for x in quotations.get("Client Name", pd.Series(dtype=str)).tolist()}
-    for _, e in enquiries.iterrows():
-        client = e.get("Client Name", "")
-        if _norm(client) not in quote_clients:
-            review = str(e.get("ENQ Review", "")).strip()
-            if review:
-                finding = f"Enquiry review note: {review}"
-                action = "Confirm the owner, latest status and next action with the marketing team."
-                priority = "High" if any(k in _norm(review) for k in ["pending", "await", "required", "drawing"]) else "Needs review"
-            else:
-                finding = "No linked quotation was found by exact client-name match; this may be a data-linkage issue."
-                action = "Verify whether a quotation exists under a different client name or reference."
-                priority = "Needs review"
-            rows.append({"Client Name": client, "Enquiry Reference": e.get("Enq. No. & Date", ""), "Item": e.get("Item", ""), "Quotation Date": "", "Quotation Value": "", "Finding Status": "Enquiry needs review", "Priority": priority, "Blocker / Finding": finding, "Recommended Next Action": action, "WO No.": "", "Source": "Enquiry Register"})
-    columns = ["Client Name", "Enquiry Reference", "Item", "Quotation Date", "Quotation Value", "Finding Status", "Priority", "Blocker / Finding", "Recommended Next Action", "WO No.", "Source"]
-    result = pd.DataFrame(rows, columns=columns)
-    if not result.empty:
-        order = {"Urgent": 0, "High": 1, "Needs review": 2, "Normal": 3}
-        result = result.sort_values(by="Priority", key=lambda s: s.map(order).fillna(4), kind="stable").reset_index(drop=True)
+def _clean(value) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def _normalise(value) -> str:
+    value = _clean(value).casefold()
+    return re.sub(r"\s+", " ", value)
+
+
+def _is_order_received(remark: str) -> bool:
+    """
+    Recognise known order-confirmation wording, including
+    the demo spelling 'Order Reced'.
+
+    Deliberately avoids treating every occurrence of 'order'
+    as confirmation.
+    """
+    text = _normalise(remark)
+
+    if not text:
+        return False
+
+    return any(phrase in text for phrase in ORDER_PHRASES)
+
+
+def _has_work_order(value: str) -> bool:
+    return bool(_clean(value))
+
+
+def build_followup_view(
+    enquiries: pd.DataFrame,
+    quotations: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Build one row per quotation and append relevant enquiry
+    information when a client/item match is available.
+
+    A missing enquiry match does not discard a quotation.
+    A missing work order does not mean an order was lost.
+    """
+    result = quotations.copy()
+
+    result["Order Confirmed"] = result["Remark"].apply(_is_order_received)
+    result["Work Order Recorded"] = result["WO No."].apply(_has_work_order)
+
+    def classify(row):
+        if row["Order Confirmed"] and not row["Work Order Recorded"]:
+            return "Order confirmed — WO missing"
+
+        if row["Order Confirmed"] and row["Work Order Recorded"]:
+            return "Order confirmed — WO recorded"
+
+        if not _clean(row.get("Remark", "")):
+            return "Awaiting status update"
+
+        return "Follow-up required"
+
+    result["Follow-up Status"] = result.apply(classify, axis=1)
+
+    def priority(row):
+        if row["Order Confirmed"] and not row["Work Order Recorded"]:
+            return "High"
+        return "Normal"
+
+    result["Follow-up Priority"] = result.apply(priority, axis=1)
+
+    # Match by client name and item where possible.
+    # Keep all quotation rows even if no enquiry matches.
+    enquiry_lookup = enquiries.copy()
+
+    enquiry_lookup["_client_key"] = enquiry_lookup["Client Name"].map(_normalise)
+    enquiry_lookup["_item_key"] = enquiry_lookup["Item"].map(_normalise)
+
+    result["_client_key"] = result["Client Name"].map(_normalise)
+    result["_item_key"] = result["Items"].map(_normalise)
+
+    enquiry_columns = [
+        column
+        for column in [
+            "Enq. No. & Date",
+            "Enq. Rec. Date",
+            "Due Date",
+            "ENQ Review",
+            "Quotaion Priority",
+            "Quotation Evaluation status",
+            "Remarks",
+        ]
+        if column in enquiry_lookup.columns
+    ]
+
+    enquiry_lookup = enquiry_lookup[
+        ["_client_key", "_item_key"] + enquiry_columns
+    ].drop_duplicates(
+        subset=["_client_key", "_item_key"],
+        keep="first",
+    )
+
+    result = result.merge(
+        enquiry_lookup,
+        on=["_client_key", "_item_key"],
+        how="left",
+        suffixes=("", "_Enquiry"),
+    )
+
+    result.drop(
+        columns=["_client_key", "_item_key"],
+        inplace=True,
+        errors="ignore",
+    )
+
     return result
 
-def summarize_metrics(enquiries, quotations, followups):
-    remarks = quotations.get("Remark", pd.Series(dtype=str)).astype(str).str.lower()
-    wo = quotations.get("WO No.", pd.Series(dtype=str)).astype(str).str.strip()
-    orders = remarks.str.contains("order rec|order received", regex=True, na=False)
-    return {"total_enquiries": int(len(enquiries)), "quotations_issued": int(len(quotations)), "orders_received": int(orders.sum()), "wo_check": int((orders & wo.eq("")).sum()), "needs_review": int((followups["Priority"] == "Needs review").sum()) if not followups.empty else 0}
+
+def summarize_metrics(
+    enquiries: pd.DataFrame,
+    quotations: pd.DataFrame,
+) -> dict:
+    """Calculate dashboard metrics using Python, not the AI model."""
+    followups = build_followup_view(enquiries, quotations)
+
+    values = pd.to_numeric(
+        quotations["Total Value"].astype(str).str.replace(",", "", regex=False),
+        errors="coerce",
+    ).fillna(0)
+
+    confirmed = followups["Order Confirmed"]
+    with_wo = followups["Work Order Recorded"]
+
+    return {
+        "total_enquiries": int(len(enquiries)),
+        "total_quotations": int(len(quotations)),
+        "total_quotation_value": float(values.sum()),
+        "orders_confirmed": int(confirmed.sum()),
+        "work_orders_recorded": int((confirmed & with_wo).sum()),
+        "confirmed_orders_missing_wo": int((confirmed & ~with_wo).sum()),
+        "followups_required": int(
+            (followups["Follow-up Status"] == "Follow-up required").sum()
+        ),
+        "awaiting_status_update": int(
+            (followups["Follow-up Status"] == "Awaiting status update").sum()
+        ),
+    }

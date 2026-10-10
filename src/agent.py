@@ -1,332 +1,15 @@
-"""Rule-based enquiry analysis with optional OpenAI explanations."""
-
-from __future__ import annotations
+"""Gemini-powered EnquiryPulse agent with allowlisted tools."""
 
 import json
 import os
-from typing import Any
+import re
 
 import pandas as pd
 
-
-def answer_demo_question(
-    question: str,
-    enquiries: pd.DataFrame,
-    quotations: pd.DataFrame,
-    followups: pd.DataFrame,
-    metrics: dict,
-) -> dict:
-    """Analyse follow-up records using explicit Python rules."""
-
-    question = (question or "").strip().lower()
-
-    if not question:
-        return {
-            "answer": "Please enter a question.",
-            "records": pd.DataFrame(),
-            "next_step": "Enter a question and try again.",
-        }
-
-    if not isinstance(followups, pd.DataFrame):
-        followups = pd.DataFrame()
-
-    records = followups.copy()
-
-    if records.empty:
-        return {
-            "answer": "No follow-up records are available to analyse.",
-            "records": records,
-            "next_step": "Check the source registers and reload the data.",
-        }
-
-    status = records.get(
-        "Finding Status",
-        pd.Series("", index=records.index),
-    ).fillna("").astype(str)
-
-    priority = records.get(
-        "Priority",
-        pd.Series("", index=records.index),
-    ).fillna("").astype(str)
-
-    # Work-order questions
-    if any(term in question for term in [
-        "work order",
-        "work-order",
-        "wo preparation",
-        "wo number",
-        "wo no",
-    ]):
-        if any(term in question for term in [
-            "still need",
-            "blank",
-            "missing",
-            "pending",
-            "check",
-            "without",
-        ]):
-            records = records[
-                status.eq("Order received — WO check")
-            ]
-
-            answer = (
-                f"Found {len(records)} recorded order(s) "
-                "requiring a work-order preparation check."
-            )
-            next_step = (
-                "Confirm work-order preparation status with "
-                "the responsible team."
-            )
-        else:
-            records = records[
-                status.isin([
-                    "Order received — WO check",
-                    "Order recorded",
-                ])
-            ]
-
-            answer = (
-                f"Found {len(records)} record(s) marked as "
-                "orders received. Review the work-order status "
-                "in each record."
-            )
-            next_step = (
-                "Verify the work-order reference and handoff "
-                "status for each order."
-            )
-
-    # Priority and attention questions
-    elif any(term in question for term in [
-        "attention",
-        "priority",
-        "urgent",
-        "review",
-        "follow up",
-        "follow-up",
-    ]):
-        records = records[
-            priority.isin(["Urgent", "High", "Needs review"])
-        ]
-
-        answer = (
-            f"Found {len(records)} record(s) marked Urgent, "
-            "High, or Needs review."
-        )
-        next_step = (
-            "Review each finding and recommended action. "
-            "Confirm ownership and timing with the team."
-        )
-
-    # Blocker questions
-    elif any(term in question for term in [
-        "blocker",
-        "blockers",
-        "problem",
-        "problems",
-        "unresolved",
-        "issue",
-        "issues",
-    ]):
-        finding_text = records.get(
-            "Blocker / Finding",
-            pd.Series("", index=records.index),
-        ).fillna("").astype(str)
-
-        records = records[finding_text.str.strip().ne("")]
-
-        answer = (
-            f"Found {len(records)} record(s) with a documented "
-            "finding or potential blocker. Verification may "
-            "be required."
-        )
-        next_step = (
-            "Review each finding and confirm the facts with "
-            "the responsible team before taking action."
-        )
-
-    # Pipeline summary questions
-    elif any(term in question for term in [
-        "pipeline",
-        "summarize",
-        "summary",
-        "overall",
-        "how many",
-        "total",
-    ]):
-        metrics = metrics if isinstance(metrics, dict) else {}
-
-        answer = (
-            f"Pipeline summary: "
-            f"{metrics.get('total_enquiries', 0)} enquiries, "
-            f"{metrics.get('quotations_issued', 0)} quotations, "
-            f"{metrics.get('orders_received', 0)} recorded orders, "
-            f"and {metrics.get('wo_check', 0)} orders requiring "
-            "a work-order check."
-        )
-        next_step = (
-            "Review records requiring a work-order check and "
-            "items marked Needs review."
-        )
-
-    # Basic record search
-    else:
-        searchable_columns = [
-            "Client Name",
-            "Item",
-            "Enquiry Reference",
-            "WO No.",
-        ]
-
-        available_columns = [
-            column
-            for column in searchable_columns
-            if column in records.columns
-        ]
-
-        terms = [
-            word.strip(".,?!:;()[]{}\"'")
-            for word in question.split()
-            if len(word.strip(".,?!:;()[]{}\"'")) >= 3
-        ]
-
-        if available_columns and terms:
-            searchable = (
-                records[available_columns]
-                .fillna("")
-                .astype(str)
-            )
-
-            row_text = searchable.agg(" ".join, axis=1).str.lower()
-
-            mask = row_text.apply(
-                lambda value: any(
-                    term in value for term in terms
-                )
-            )
-
-            records = records[mask]
-
-            answer = (
-                f"Found {len(records)} record(s) matching "
-                "your search terms. A text match alone does "
-                "not establish an order outcome."
-            )
-            next_step = (
-                "Inspect the matching records and verify "
-                "their status against the source registers."
-            )
-        else:
-            records = pd.DataFrame()
-
-            answer = (
-                "I could not determine a specific answer using "
-                "the available rule-based analysis."
-            )
-            next_step = (
-                "Try asking about records needing attention, "
-                "work-order checks, blockers, or the pipeline."
-            )
-
-    return {
-        "answer": answer,
-        "records": records.reset_index(drop=True),
-        "next_step": next_step,
-    }
+from src.ai_tools import ALLOWED_TOOLS, execute_tool
 
 
-
-def explain_with_openai(question, base_result, metrics):
-    """Explain Python findings using the Gemini API."""
-
-    api_key = _get_setting("GEMINI_API_KEY")
-
-    if not api_key:
-        return (
-            "Gemini explanation unavailable: "
-            "GEMINI_API_KEY is not configured. "
-            "Python findings remain available."
-        )
-
-    if not isinstance(base_result, dict):
-        return "AI explanation unavailable: invalid findings format."
-
-    try:
-        from google import genai
-
-        result_records = base_result.get("records")
-        safe_records = []
-
-        if (
-            isinstance(result_records, pd.DataFrame)
-            and not result_records.empty
-        ):
-            allowed_columns = [
-                "Client Name",
-                "Item",
-                "Enquiry Reference",
-                "Finding Status",
-                "Priority",
-                "Blocker / Finding",
-                "Recommended Next Action",
-                "WO No.",
-            ]
-
-            columns = [
-                column
-                for column in allowed_columns
-                if column in result_records.columns
-            ]
-
-            safe_records = (
-                result_records[columns]
-                .head(10)
-                .fillna("")
-                .to_dict(orient="records")
-            )
-
-        payload = {
-            "question": question,
-            "python_answer": str(base_result.get("answer", "")),
-            "recommended_next_step": str(
-                base_result.get("next_step", "")
-            ),
-            "matching_records": safe_records,
-            "summary_metrics": _safe_metrics(metrics),
-        }
-
-        client = genai.Client(api_key=api_key)
-
-        response = client.models.generate_content(
-            model=_get_setting(
-                "GEMINI_MODEL",
-                "gemini-3.5-flash-lite",
-            ),
-            contents=(
-                "You are an enquiry monitoring business assistant. "
-                "Explain the supplied Python findings concisely for "
-                "management. Use only the supplied evidence. Do not "
-                "invent counts, dates, clients, or business outcomes. "
-                "A blank work-order number does not prove an order "
-                "was lost or overdue. Distinguish facts from "
-                "recommendations and state when evidence is insufficient.\n\n"
-                + json.dumps(payload, ensure_ascii=False, default=str)
-            ),
-        )
-
-        explanation = (response.text or "").strip()
-        return explanation or "Gemini returned an empty explanation."
-
-    except Exception as exc:
-        return (
-            f"Gemini explanation failed: {type(exc).__name__}: {exc}\n\n"
-            "Python findings remain available. Check your API key, "
-            "model access, usage limits, and Streamlit logs."
-        )
-
-
-def _get_setting(name: str, default: str = "") -> str:
-    """Read Streamlit Secrets, then environment variables."""
-
+def _setting(name: str, default: str = "") -> str:
     try:
         import streamlit as st
 
@@ -339,16 +22,247 @@ def _get_setting(name: str, default: str = "") -> str:
     return os.getenv(name, default)
 
 
-def _safe_metrics(metrics: Any) -> dict:
-    """Return simple values suitable for the AI request."""
+def _get_client():
+    api_key = _setting("GEMINI_API_KEY")
 
-    if not isinstance(metrics, dict):
+    if not api_key:
+        return None
+
+    from google import genai
+
+    return genai.Client(api_key=api_key)
+
+
+def _parse_json(text: str) -> dict:
+    text = (text or "").strip()
+    text = re.sub(
+        r"^```(?:json)?\s*|\s*```$",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    try:
+        value = json.loads(text)
+        return value if isinstance(value, dict) else {}
+    except json.JSONDecodeError:
         return {}
 
-    safe = {}
 
-    for key, value in metrics.items():
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            safe[str(key)] = value
+def _fallback_route(question: str) -> tuple[str, dict]:
+    """Simple deterministic fallback when Gemini is unavailable."""
 
-    return safe
+    q = question.casefold()
+
+    if any(word in q for word in ["draft", "email", "follow-up email"]):
+        match = re.search(
+            r"(?:for|to)\s+(.+)$",
+            question,
+            flags=re.IGNORECASE,
+        )
+        client = match.group(1).strip() if match else ""
+        return "draft_followup", {"client_name": client}
+
+    if "decision brief" in q or "decision for ceo" in q:
+        return "decision_brief", {"question": question}
+
+    if any(
+        word in q
+        for word in ["urgent", "high priority", "attention", "blocker", "stalled"]
+    ):
+        return "priority_records", {"priority": "High"}
+
+    if any(
+        word in q for word in ["pipeline", "summary", "how many", "overall", "total"]
+    ):
+        return "pipeline_summary", {}
+
+    query = re.sub(
+        r"^(find|search|show|which|who|what about)\s+",
+        "",
+        question,
+        flags=re.IGNORECASE,
+    ).strip(" ?.")
+
+    return "search_records", {"query": query or question}
+
+
+def _route_with_gemini(client, question: str) -> dict:
+    prompt = f"""
+You route questions for an industrial sales-enquiry assistant.
+
+Choose exactly ONE approved tool:
+1. pipeline_summary — arguments: {{}}
+2. priority_records — arguments: {{"priority":"High"}}
+3. search_records — arguments: {{"query":"search term"}}
+4. draft_followup — arguments: {{"client_name":"client name"}}
+5. decision_brief — arguments: {{"question":"management question"}}
+
+Return JSON only:
+{{"tool":"approved_tool_name","args":{{}}}}
+
+Do not answer the business question.
+Do not invent client names.
+Never select tools outside the allowlist.
+If a draft is requested but the client is unclear, use an empty client_name.
+
+Question: {question}
+"""
+
+    response = client.models.generate_content(
+        model=_setting("GEMINI_MODEL", "gemini-2.5-flash"),
+        contents=prompt,
+        config={"response_mime_type": "application/json"},
+    )
+
+    route = _parse_json(getattr(response, "text", ""))
+
+    if route.get("tool") not in ALLOWED_TOOLS:
+        return {}
+
+    args = route.get("args", {})
+    return {
+        "tool": route["tool"],
+        "args": args if isinstance(args, dict) else {},
+    }
+
+
+def _explain_with_gemini(client, question, result, metrics) -> str:
+    records = result.get("records")
+    record_data = []
+
+    if isinstance(records, pd.DataFrame) and not records.empty:
+        allowed_columns = [
+            "Client Name",
+            "Enquiry Reference",
+            "Item",
+            "Finding Status",
+            "Priority",
+            "Blocker / Finding",
+            "Recommended Next Action",
+            "WO No.",
+            "Source",
+        ]
+
+        columns = [column for column in allowed_columns if column in records.columns]
+
+        record_data = records[columns].head(12).fillna("").to_dict(orient="records")
+
+    evidence = {
+        "question": question,
+        "python_result": result.get("answer", ""),
+        "next_step": result.get("next_step", ""),
+        "evidence": result.get("evidence", {}),
+        "records": record_data,
+        "metrics": metrics,
+        "action_kind": result.get("action_kind", ""),
+    }
+
+    instructions = """
+You are EnquiryPulse, a careful industrial sales-operations assistant.
+
+Explain only the supplied evidence. Never invent counts, dates, client details,
+causes, order outcomes, prices, or delivery commitments.
+
+Distinguish recorded facts from hypotheses. A blank remark or work-order number
+does not prove an order was lost.
+
+For a follow-up request, draft a professional email with subject and body.
+Never claim an email was sent.
+
+For a decision brief, state the recommendation, supported options, risks or
+unknowns, and one proposed internal next step.
+
+Keep the response concise and practical.
+"""
+
+    response = client.models.generate_content(
+        model=_setting("GEMINI_MODEL", "gemini-2.5-flash"),
+        contents=(
+            instructions
+            + "\n\nEvidence JSON:\n"
+            + json.dumps(evidence, ensure_ascii=False, default=str)
+        ),
+    )
+
+    return (getattr(response, "text", "") or "").strip()
+
+
+def answer_question(
+    question: str,
+    enquiries: pd.DataFrame,
+    quotations: pd.DataFrame,
+    followups: pd.DataFrame,
+    metrics: dict,
+) -> dict:
+    question = (question or "").strip()
+
+    if not question:
+        return {
+            "answer": "Please enter a question.",
+            "records": followups.head(0).copy(),
+            "next_step": "Enter a question and try again.",
+            "tool": "",
+        }
+
+    client = None
+    try:
+        client = _get_client()
+    except Exception:
+        pass
+
+    route = {}
+
+    if client is not None:
+        try:
+            route = _route_with_gemini(client, question)
+        except Exception:
+            route = {}
+
+    if route:
+        tool_name = route["tool"]
+        args = route["args"]
+    else:
+        tool_name, args = _fallback_route(question)
+
+    result = execute_tool(
+        tool_name,
+        args,
+        enquiries,
+        quotations,
+        followups,
+        metrics,
+    )
+
+    result["tool"] = tool_name
+
+    if tool_name == "draft_followup":
+        records = result.get("records")
+
+        if records is None or records.empty:
+            result["answer"] = (
+                "No matching client record was found. "
+                "No customer-specific draft was generated."
+            )
+            result["draft"] = ""
+        else:
+            result["action_kind"] = "draft"
+
+    if client is not None:
+        try:
+            result["ai_summary"] = _explain_with_gemini(
+                client, question, result, metrics
+            )
+        except Exception:
+            result["ai_summary"] = (
+                "Gemini could not generate an explanation. "
+                "Review the Python findings and source records."
+            )
+    else:
+        result["ai_summary"] = (
+            "Gemini is not configured. The Python analysis ran, but no "
+            "AI-generated explanation was produced. Configure GEMINI_API_KEY "
+            "in Streamlit Secrets."
+        )
+
+    return result
