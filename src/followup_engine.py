@@ -146,6 +146,7 @@ def summarize_metrics(
     return {
         "total_enquiries": int(len(enquiries)),
         "total_quotations": int(len(quotations)),
+        "quotations_issued": int(len(quotations)),
         "total_quotation_value": float(values.sum()),
         "orders_confirmed": int(confirmed.sum()),
         "work_orders_recorded": int((confirmed & with_wo).sum()),
