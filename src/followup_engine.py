@@ -1,8 +1,6 @@
-
 import re
 
 import pandas as pd
-
 
 ORDER_PHRASES = (
     "order received",
@@ -44,12 +42,8 @@ def build_followup_view(
 
     result = quotations.copy()
 
-    result["Order Confirmed"] = (
-        result["Remark"].apply(_is_order_received)
-    )
-    result["Work Order Recorded"] = (
-        result["WO No."].apply(_has_work_order)
-    )
+    result["Order Confirmed"] = result["Remark"].apply(_is_order_received)
+    result["Work Order Recorded"] = result["WO No."].apply(_has_work_order)
 
     def classify(row):
         if row["Order Confirmed"] and not row["Work Order Recorded"]:
@@ -65,6 +59,8 @@ def build_followup_view(
 
     result["Follow-up Status"] = result.apply(classify, axis=1)
 
+    result["Finding Status"] = result["Follow-up Status"]
+
     def priority(row):
         if row["Order Confirmed"] and not row["Work Order Recorded"]:
             return "High"
@@ -76,12 +72,8 @@ def build_followup_view(
     # Match enquiries to quotations by client and item.
     enquiry_lookup = enquiries.copy()
 
-    enquiry_lookup["_client_key"] = (
-        enquiry_lookup["Client Name"].map(_normalise)
-    )
-    enquiry_lookup["_item_key"] = (
-        enquiry_lookup["Item"].map(_normalise)
-    )
+    enquiry_lookup["_client_key"] = enquiry_lookup["Client Name"].map(_normalise)
+    enquiry_lookup["_item_key"] = enquiry_lookup["Item"].map(_normalise)
 
     result["_client_key"] = result["Client Name"].map(_normalise)
     result["_item_key"] = result["Items"].map(_normalise)
@@ -122,9 +114,7 @@ def build_followup_view(
 
     # Dashboard compatibility columns.
     if "Enq. No. & Date" in result.columns:
-        result["Enquiry Reference"] = (
-            result["Enq. No. & Date"].fillna("")
-        )
+        result["Enquiry Reference"] = result["Enq. No. & Date"].fillna("")
     else:
         result["Enquiry Reference"] = ""
 
@@ -159,9 +149,7 @@ def build_followup_view(
 
         return ""
 
-    result["Recommended Next Action"] = result.apply(
-        next_action, axis=1
-    )
+    result["Recommended Next Action"] = result.apply(next_action, axis=1)
 
     return result
 
@@ -175,21 +163,15 @@ def summarize_metrics(
     followups = build_followup_view(enquiries, quotations)
 
     values = pd.to_numeric(
-        quotations["Total Value"]
-        .astype(str)
-        .str.replace(",", "", regex=False),
+        quotations["Total Value"].astype(str).str.replace(",", "", regex=False),
         errors="coerce",
     ).fillna(0)
 
     confirmed = followups["Order Confirmed"]
     with_wo = followups["Work Order Recorded"]
 
-    followup_required = (
-        followups["Follow-up Status"] == "Follow-up required"
-    )
-    awaiting_update = (
-        followups["Follow-up Status"] == "Awaiting status update"
-    )
+    followup_required = followups["Follow-up Status"] == "Follow-up required"
+    awaiting_update = followups["Follow-up Status"] == "Awaiting status update"
     confirmed_missing_wo = confirmed & ~with_wo
 
     return {
@@ -201,12 +183,8 @@ def summarize_metrics(
         "orders_received": int(confirmed.sum()),
         "work_orders_recorded": int((confirmed & with_wo).sum()),
         "wo_check": int((confirmed & with_wo).sum()),
-        "confirmed_orders_missing_wo": int(
-            confirmed_missing_wo.sum()
-        ),
+        "confirmed_orders_missing_wo": int(confirmed_missing_wo.sum()),
         "followups_required": int(followup_required.sum()),
-        "needs_review": int(
-            followup_required.sum() + confirmed_missing_wo.sum()
-        ),
+        "needs_review": int(followup_required.sum() + confirmed_missing_wo.sum()),
         "awaiting_status_update": int(awaiting_update.sum()),
     }
