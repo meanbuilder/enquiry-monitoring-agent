@@ -41,7 +41,7 @@ h1, h2, h3 { color: #123F46; }
 try:
     enquiries, quotations = load_sample_data()
     followups = build_followup_view(enquiries, quotations)
-    metrics = summarize_metrics(enquiries, quotations, followups)
+    metrics = summarize_metrics(enquiries, quotations)
 except Exception as exc:
     st.error(f"Could not load the demo registers: {type(exc).__name__}: {exc}")
     st.stop()
