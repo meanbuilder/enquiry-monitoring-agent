@@ -79,6 +79,7 @@ def build_followup_view(
         return "Normal"
 
     result["Follow-up Priority"] = result.apply(priority, axis=1)
+    result["Priority"] = result["Follow-up Priority"]
 
     # Match by client name and item where possible.
     # Keep all quotation rows even if no enquiry matches.
