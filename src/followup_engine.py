@@ -81,6 +81,48 @@ def build_followup_view(
     result["Follow-up Priority"] = result.apply(priority, axis=1)
     result["Priority"] = result["Follow-up Priority"]
 
+    result["Enquiry Reference"] = result.get(
+    "Enq. No. & Date", pd.Series("", index=result.index)
+).fillna("")
+
+result["Item"] = result.get(
+    "Items", pd.Series("", index=result.index)
+).fillna("")
+
+result["Blocker / Finding"] = result.apply(
+    lambda row: (
+        "Order confirmed but work order missing"
+        if row["Order Confirmed"] and not row["Work Order Recorded"]
+        else "Quotation status needs update"
+        if row["Follow-up Status"] == "Awaiting status update"
+        else "Follow-up required"
+        if row["Follow-up Status"] == "Follow-up required"
+        else ""
+    ),
+    axis=1,
+)
+
+result["Recommended Next Action"] = result.apply(
+    lambda row: (
+        "Confirm and record the work order number"
+        if row["Order Confirmed"] and not row["Work Order Recorded"]
+        else "Contact the customer for a status update"
+        if row["Follow-up Status"] in (
+            "Awaiting status update",
+            "Follow-up required",
+        )
+        else "Verify the recorded work order"
+        if row["Work Order Recorded"]
+        else ""
+    ),
+    axis=1,
+)
+
+
+
+
+    
+
     # Match by client name and item where possible.
     # Keep all quotation rows even if no enquiry matches.
     enquiry_lookup = enquiries.copy()
