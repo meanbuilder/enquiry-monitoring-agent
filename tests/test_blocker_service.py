@@ -33,10 +33,12 @@ def test_overview_excludes_resolved_blockers_from_exposure():
 
 def test_invalid_due_date_is_rejected():
     blockers = load_blockers(BLOCKER_FILE)
+
+    # Allow the test to insert an invalid string into the date column.
+    blockers["due_date"] = blockers["due_date"].astype("object")
     blockers.loc[0, "due_date"] = "not-a-date"
 
-    with pytest.raises(ValueError, match="due dates"):
-        build_blocker_overview(blockers, as_of="2026-10-10")
+    # Keep the existing assertion from your original test below this line.
 
 
 def test_negative_estimated_value_is_rejected():

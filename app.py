@@ -9,7 +9,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.agent import answer_question
-from src.blocker_service import build_blocker_overview, load_blockers
+from src.blocker_repository import initialize_database, list_blockers
+from src.blocker_service import build_blocker_overview
 from src.data_loader import load_sample_data
 from src.decision_service import build_decision_brief
 from src.followup_engine import build_followup_view, summarize_metrics
@@ -40,18 +41,14 @@ try:
     followups = build_followup_view(enquiries, quotations)
     metrics = summarize_metrics(enquiries, quotations)
 
-    blockers = load_blockers(ROOT / "sample_data" / "blockers.csv")
+    initialize_database(ROOT / "sample_data" / "blockers.csv")
+
+    blockers = pd.DataFrame(list_blockers())
     blocker_overview = build_blocker_overview(blockers)
 
 except Exception as exc:
     st.error(f"Could not load the demo registers: {type(exc).__name__}: {exc}")
     st.stop()
-
-
-except Exception as exc:
-    st.error(f"Could not load the demo registers: {type(exc).__name__}: {exc}")
-    st.stop()
-
 
 # --------------------------------------------------
 # Shared application header
@@ -66,7 +63,6 @@ st.warning(
     "DEMO MODE: Use fictional data only. Do not upload confidential "
     "customer or commercial records to a public demo."
 )
-
 
 # --------------------------------------------------
 # CEO Overview
